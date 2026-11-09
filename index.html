@@ -1,0 +1,1033 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tourism and World Heritage</title>
+<meta name="description" content="Compare international tourist arrivals across countries and regions, and explore how UNESCO World Heritage sites relate to tourism.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,400&display=swap">
+<style>
+:root {
+  --color-fg: #1d2127; --color-fg-muted: #5c6470; --color-bg: #fbfbfa; --color-panel: #ffffff;
+  --color-border-line: #e2e3e0; --color-ok: #2f7d4f; --color-warn: #a86a00; --color-bad: #c2412d;
+  --c1: #2a6fdb; --c2: #1f9e78; --c3: #d4862b; --c4: #8a5cc7; --c5: #cf4a7a; --c6: #3aa0b8; --c7: #8f8f2a; --c8: #6b7380;
+  --cds-chart-muted: #b9bec6; --cds-chart-grid: #ececea; --cds-chart-axis: #a5a9b0; --cds-chart-reference: #6b7280;
+  --cds-chart-status-critical: #c2412d; --cds-text-secondary: #5c6470;
+  --cds-surface-popover: #ffffff; --cds-border: #dcddda; --cds-shadow-popover: 0 6px 20px rgba(20, 24, 30, .12);
+  --font-anthropic-sans: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-anthropic-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --cds-font-size-caption: 0.8125rem; --cds-font-size-body: 1rem; --cds-font-size-heading: 1.125rem; --cds-font-size-title: 2.25rem;
+  --cds-font-weight-medium: 600;
+  --cds-gap-xs: 4px; --cds-gap-sm: 8px; --cds-gap-md: 14px; --cds-gap-lg: 20px; --cds-gap-xl: 32px;
+  --cds-pad-sm: 8px; --cds-pad-md: 12px; --cds-pad-lg: 18px; --cds-radius: 8px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-fg: #e8eaed; --color-fg-muted: #a1a8b3; --color-bg: #15181c; --color-panel: #1d2126;
+    --color-border-line: #2e333a; --color-ok: #5cc28a; --color-warn: #e0a640; --color-bad: #f07a63;
+    --c1: #6aa1ff; --c2: #4cc7a0; --c3: #f0a54f; --c4: #b08ef0; --c5: #f07ba6; --c6: #63c3d8; --c7: #c4c45a; --c8: #9aa2ae;
+    --cds-chart-muted: #4a515b; --cds-chart-grid: #262a30; --cds-chart-axis: #5d646e; --cds-chart-reference: #9aa2ae;
+    --cds-chart-status-critical: #f07a63; --cds-text-secondary: #a1a8b3;
+    --cds-surface-popover: #23282e; --cds-border: #353b43; --cds-shadow-popover: 0 6px 20px rgba(0, 0, 0, .4);
+    color-scheme: dark;
+  }
+}
+html, body { margin: 0; background: var(--color-bg); color: var(--color-fg); }
+body { font-family: var(--font-anthropic-sans); font-size: var(--cds-font-size-body); line-height: 1.45; }
+#dash-root { max-width: 1180px; margin: 0 auto; padding-block: 32px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.dash-select { font: inherit; font-size: var(--cds-font-size-caption); color: var(--color-fg); background-color: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: 6px 10px; max-width: 100%; }
+.dash-select:focus-visible { outline: 2px solid var(--color-fg); outline-offset: 1px; }
+.dash-skeleton { position: relative; color: transparent !important; }
+.dash-skeleton::after { content: ""; position: absolute; inset: 20%; border-radius: 4px; background: var(--color-border-line); }
+.site-foot { margin-top: 40px; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+.site-foot a { color: inherit; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+// Minimal stand-in for the dashboard runtime: loads the data files, runs calculations, and redraws.
+window.dash = (() => {
+  const store = {}, calcs = [], draws = new Map(), listeners = [];
+  const colors = ['var(--c1)', 'var(--c2)', 'var(--c3)', 'var(--c4)', 'var(--c5)', 'var(--c6)', 'var(--c7)', 'var(--c8)'];
+  const data = (id) => store[id] || { status: 'loading', data: [] };
+  const run = (name) => {
+    const fn = draws.get(name); if (!fn) return;
+    document.querySelectorAll('[data-draw="' + name + '"]').forEach((el) => { try { fn(el); } catch (e) { console.error(name, e); } });
+  };
+  const runAll = () => { listeners.forEach((f) => { try { f(); } catch (e) { console.error(e); } }); draws.forEach((_, n) => run(n)); };
+  const compute = () => {
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const c of calcs) {
+        if (store[c.id]) continue;
+        const ins = c.inputs.map(data);
+        if (ins.some((d) => d.status === 'error')) { store[c.id] = { status: 'error', data: null }; changed = true; continue; }
+        if (ins.every((d) => d.status === 'ok')) {
+          try { store[c.id] = { status: 'ok', data: c.fn(...ins.map((d) => d.data)) }; }
+          catch (e) { console.error(c.id, e); store[c.id] = { status: 'error', data: null }; }
+          changed = true;
+        }
+      }
+    }
+  };
+  const load = async (sources) => {
+    runAll();
+    await Promise.all(Object.entries(sources).map(async ([id, src]) => {
+      try {
+        const res = await fetch(src.url);
+        if (!res.ok) throw new Error(res.status);
+        store[id] = { status: 'ok', data: src.format === 'csv' ? d3.csvParse(await res.text()) : await res.json() };
+      } catch (e) { console.error(id, e); store[id] = { status: 'error', data: [] }; }
+    }));
+    compute(); runAll();
+    let w = window.innerWidth, t;
+    window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(() => { if (window.innerWidth !== w) { w = window.innerWidth; runAll(); } }, 150); });
+  };
+  return {
+    colors, data, load,
+    calc: (id, def) => calcs.push({ id, inputs: def.inputs, fn: def.fn }),
+    draw: (name, fn) => { if (fn) draws.set(name, fn); else run(name); },
+    onData: (fn) => listeners.push(fn),
+  };
+})();
+</script>
+</head>
+<body>
+<div id="dash-root">
+<style>
+.tr { display: grid; gap: var(--cds-gap-xl); }
+.tr h1 { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; text-wrap: balance; }
+.tr h2 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0; text-wrap: balance; }
+.tr-lede { max-width: 68ch; margin: var(--cds-gap-sm) 0 0; line-height: 1.55; }
+.tr-sub { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); margin: var(--cds-gap-xs) 0 0; max-width: 72ch; line-height: 1.5; }
+.tr-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--cds-gap-sm) var(--cds-gap-md); margin-top: var(--cds-gap-md); }
+.tr-label { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); letter-spacing: .05em; text-transform: uppercase; }
+.tr-seg { display: inline-flex; border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); overflow: hidden; }
+.tr-seg button { font: inherit; font-size: var(--cds-font-size-caption); padding: 6px 12px; border: 0; background: transparent; color: var(--color-fg-muted); cursor: pointer; }
+.tr-seg button[aria-pressed="true"] { background: var(--color-fg); color: var(--color-bg); }
+.tr-seg button:focus-visible, .tr-chip:focus-visible { outline: 2px solid var(--color-fg); outline-offset: 2px; }
+.tr-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: var(--cds-gap-md); }
+.tr-card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); min-width: 0; }
+.tr-pill { display: inline-flex; align-items: center; gap: 6px; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); letter-spacing: .04em; text-transform: uppercase; }
+.tr-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--cds-chart-muted); flex: none; }
+.tr-big { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: 1.9rem; line-height: 1.15; margin: var(--cds-gap-sm) 0 var(--cds-gap-xs); overflow-wrap: anywhere; }
+.tr-stat { margin: 0; font-variant-numeric: tabular-nums; }
+.tr-stat b { font-weight: var(--cds-font-weight-medium); }
+.tr-section { display: grid; gap: var(--cds-gap-sm); min-width: 0; }
+.tr-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--cds-gap-xl); }
+.tr-chart { position: relative; min-height: 300px; min-width: 0; }
+.tr-chart.short { min-height: 220px; }
+.tr-chart svg text { font-size: var(--cds-font-size-caption); fill: var(--cds-text-secondary); font-variant-numeric: tabular-nums; }
+.tr-chart svg text.hi { fill: var(--color-fg); font-weight: var(--cds-font-weight-medium); }
+.tr-tip { position: absolute; pointer-events: none; background: var(--cds-surface-popover); border: 1px solid var(--cds-border); box-shadow: var(--cds-shadow-popover); border-radius: var(--cds-radius); padding: 8px 10px; font-size: var(--cds-font-size-caption); min-width: 150px; max-width: 260px; z-index: 2; }
+.tr-tip .t { font-weight: var(--cds-font-weight-medium); margin-bottom: 4px; }
+.tr-tip .r { display: flex; align-items: center; gap: 6px; color: var(--cds-text-secondary); font-variant-numeric: tabular-nums; }
+.tr-tip .r span:nth-child(2) { flex: 1; }
+.tr-sw { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.tr-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--cds-font-size-caption); color: var(--cds-text-secondary); margin-top: 6px; }
+.tr-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.tr-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tr-chip { font: inherit; font-size: var(--cds-font-size-caption); display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--color-border-line); border-radius: 999px; background: var(--color-panel); color: var(--color-fg); cursor: pointer; }
+.tr-chip:hover { border-color: var(--color-fg-muted); }
+.tr-x { color: var(--color-fg-muted); }
+.tr-tablewrap { overflow: auto; max-height: 460px; border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); }
+.tr table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: var(--cds-font-size-caption); }
+.tr th, .tr td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--color-border-line); white-space: nowrap; }
+.tr th { position: sticky; top: 0; background: var(--color-panel); color: var(--color-fg-muted); font-weight: var(--cds-font-weight-medium); }
+.tr td.n, .tr th.n { text-align: right; }
+.tr tr.small td { color: var(--color-fg-muted); }
+.tr tr.lead td { font-weight: var(--cds-font-weight-medium); }
+.tr .neg { color: var(--color-bad); }
+.tr details { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); max-width: 72ch; line-height: 1.5; }
+.tr summary { cursor: pointer; color: var(--color-fg); }
+[data-dash-source-state=refreshing] { opacity: .5; }
+.tr h3 { font-size: var(--cds-font-size-body); font-weight: var(--cds-font-weight-medium); margin: 0; }
+.tr-band { display: grid; gap: var(--cds-gap-lg); border-top: 1px solid var(--color-border-line); padding-top: var(--cds-gap-xl); }
+.tr-band > h2 { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: 1.6rem; }
+.tr-ring { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--color-bad); flex: none; }
+.tr-map { position: relative; min-height: 220px; min-width: 0; }
+.tr-map svg text { font-size: var(--cds-font-size-caption); fill: var(--cds-text-secondary); }
+</style>
+
+<div class="tr">
+  <header id="top">
+    <h1>Tourism and World Heritage</h1>
+    <p class="tr-lede" id="takeaway">From <span data-draw="per">—</span>, <b data-draw="lr-name">—</b> was the fastest-growing region, with international arrivals rising <b data-draw="lr-cagr">—</b> a year on average. Among countries that started with at least 1 million arrivals, <b data-draw="lc-name">—</b> grew fastest, at <b data-draw="lc-cagr">—</b> a year.</p>
+    <div class="tr-controls" id="period-controls">
+      <span class="tr-label" id="period-label">Growth period</span>
+      <div class="tr-seg" role="group" aria-labelledby="period-label">
+        <button type="button" id="p-2009" data-period="2009-2019" aria-pressed="true">2009–2019</button>
+        <button type="button" id="p-1995" data-period="1995-2019" aria-pressed="false">1995–2019</button>
+      </div>
+    </div>
+    <p class="tr-sub">Growth is the average yearly change (compound annual growth rate) in inbound overnight visitors. Both periods end in 2019, the last year before the pandemic.</p>
+  </header>
+
+  <div class="tr-cards" id="leaders">
+    <article class="tr-card" id="card-region">
+      <div class="tr-pill"><span class="tr-dot tr-accent"></span>Fastest-growing region</div>
+      <div class="tr-big" data-draw="lr-name">—</div>
+      <p class="tr-stat"><b data-draw="lr-cagr">—</b> a year, <span data-draw="per">—</span></p>
+      <p class="tr-sub"><span data-draw="lr-start">—</span> → <span data-draw="lr-end">—</span> arrivals</p>
+    </article>
+    <article class="tr-card" id="card-country">
+      <div class="tr-pill"><span class="tr-dot tr-accent"></span>Fastest-growing country</div>
+      <div class="tr-big" data-draw="lc-name">—</div>
+      <p class="tr-stat"><b data-draw="lc-cagr">—</b> a year, <span data-draw="per">—</span></p>
+      <p class="tr-sub"><span data-draw="lc-start">—</span> → <span data-draw="lc-end">—</span> arrivals</p>
+    </article>
+    <article class="tr-card" id="card-world">
+      <div class="tr-pill"><span class="tr-dot"></span>World, for comparison</div>
+      <div class="tr-big">World</div>
+      <p class="tr-stat"><b data-draw="w-cagr">—</b> a year, <span data-draw="per">—</span></p>
+      <p class="tr-sub"><span data-draw="w-start">—</span> → <span data-draw="w-end">—</span> arrivals</p>
+    </article>
+  </div>
+
+  <div class="tr-two">
+    <section class="tr-section" id="regions-growth">
+      <h2>Arrivals by region, indexed to <span data-draw="per-start">—</span> = 100</h2>
+      <div class="tr-chart" data-draw="region-index" data-source="regionIndex"></div>
+    </section>
+    <section class="tr-section" id="regions-rate">
+      <h2>Average yearly growth by region</h2>
+      <div class="tr-chart short" data-draw="region-bars" data-source="growth"></div>
+      <p class="tr-sub" data-draw="reg-missing"></p>
+    </section>
+  </div>
+
+  <section class="tr-section" id="countries">
+    <h2>Fastest-growing countries</h2>
+    <div class="tr-controls">
+      <label class="tr-label" for="region-filter">Region</label>
+      <select class="dash-select" id="region-filter" data-draw="region-filter" data-source="arrivals" aria-label="Region"></select>
+    </div>
+    <p class="tr-sub">Top 15 by average yearly growth, among countries with at least 1 million arrivals at the start of the period. Smaller places can post huge rates from a tiny base, so they are listed in the table below but left out of this ranking.</p>
+    <div class="tr-chart" data-draw="country-bars" data-source="growth"></div>
+  </section>
+
+  <section class="tr-band" id="heritage">
+    <h2>World Heritage and tourism</h2>
+    <p class="tr-lede" id="heritage-takeaway">Countries with more World Heritage sites tend to draw more visitors. In 2019 the median country with 21 or more sites received <b data-draw="hb-top">—</b> international arrivals, against <b data-draw="hb-zero">—</b> for countries with none. New sites tell a different story: sites inscribed from 2010 to 2019 show <b data-draw="hs-b-word">—</b> link to tourism growth over the same decade (correlation <b data-draw="hs-b-r">—</b>).</p>
+
+    <div class="tr-cards" id="heritage-cards">
+      <article class="tr-card" id="card-sites">
+        <div class="tr-pill">Sites on the list</div>
+        <div class="tr-big" data-draw="ht-sites">—</div>
+        <p class="tr-sub"><span data-draw="ht-cultural">—</span> cultural · <span data-draw="ht-natural">—</span> natural · <span data-draw="ht-mixed">—</span> mixed · <span data-draw="ht-danger">—</span> in danger</p>
+      </article>
+      <article class="tr-card" id="card-corr">
+        <div class="tr-pill">Sites vs. visitors</div>
+        <div class="tr-big">r = <span data-draw="hs-a-r">—</span></div>
+        <p class="tr-sub">Correlation between sites inscribed by 2019 and 2019 arrivals, on a log scale, across <span data-draw="hs-a-n">—</span> countries. 1 would be a perfect match.</p>
+      </article>
+      <article class="tr-card" id="card-gem">
+        <div class="tr-pill">Fewest visitors per site</div>
+        <div class="tr-big" data-draw="hg-name">—</div>
+        <p class="tr-sub"><span data-draw="hg-per">—</span> arrivals per site in 2019, across <span data-draw="hg-sites">—</span> sites. Among countries with at least 5 sites.</p>
+      </article>
+    </div>
+
+    <div class="tr-section" id="heritage-scatter">
+      <div class="tr-controls">
+        <span class="tr-label" id="hview-label">View</span>
+        <div class="tr-seg" role="group" aria-labelledby="hview-label">
+          <button type="button" id="hv-a" data-hview="A" aria-pressed="true">Sites vs. visitors</button>
+          <button type="button" id="hv-b" data-hview="B" aria-pressed="false">New sites vs. growth</button>
+        </div>
+      </div>
+      <h3 data-hview-text="A">Do more heritage sites mean more visitors?</h3>
+      <h3 data-hview-text="B" hidden>Did adding sites speed up tourism growth?</h3>
+      <p class="tr-sub" data-hview-text="A">Each dot is a country: sites inscribed by 2019 across, 2019 arrivals up (log scale). The line is the best fit. Hover a dot for details.</p>
+      <p class="tr-sub" data-hview-text="B" hidden>Each dot is a country with at least 1 million arrivals in 2009: sites added from 2010 to 2019 across, average yearly growth in arrivals 2009–2019 up. The line is the best fit.</p>
+      <div class="tr-chart" data-draw="h-scatter" data-source="heritageJoin heritageStats" style="min-height:360px"></div>
+    </div>
+
+    <div class="tr-two">
+      <div class="tr-section" id="heritage-buckets">
+        <h3>Median 2019 arrivals by number of sites</h3>
+        <p class="tr-sub">Countries grouped by World Heritage sites inscribed by 2019.</p>
+        <div class="tr-chart short" data-draw="h-buckets" data-source="heritageBuckets"></div>
+      </div>
+      <div class="tr-section" id="heritage-per-site">
+        <h3>Visitors per site, 2019</h3>
+        <p class="tr-sub">Countries with at least 5 sites. High numbers mean heritage sits inside a busy tourism market. Low numbers point to sites that few international visitors reach.</p>
+        <div class="tr-tablewrap" style="max-height:none">
+          <table data-source="heritageJoin" data-row-key="code">
+            <thead><tr><th data-field="name">Most per site</th><th class="n" data-field="sites2019">Sites</th><th class="n" data-field="perSite">Arrivals per site</th></tr></thead>
+            <tbody data-draw="h-top-per"></tbody>
+          </table>
+        </div>
+        <div class="tr-tablewrap" style="max-height:none">
+          <table data-source="heritageJoin" data-row-key="code">
+            <thead><tr><th data-field="name">Fewest per site</th><th class="n" data-field="sites2019">Sites</th><th class="n" data-field="perSite">Arrivals per site</th></tr></thead>
+            <tbody data-draw="h-low-per"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="tr-section" id="heritage-map">
+      <h3>Where the sites are</h3>
+      <div class="tr-controls">
+        <label class="tr-label" for="map-country">Country</label>
+        <select class="dash-select" id="map-country" data-draw="map-country" data-source="heritageJoin" aria-label="Highlight a country"></select>
+        <label class="tr-label" for="map-filter">Show</label>
+        <select class="dash-select" id="map-filter" aria-label="Which sites to show">
+          <option value="">All sites</option>
+          <option value="Cultural">Cultural</option>
+          <option value="Natural">Natural</option>
+          <option value="Mixed">Mixed</option>
+          <option value="danger">In danger</option>
+        </select>
+      </div>
+      <p class="tr-sub" data-draw="map-country-stats"></p>
+      <div class="tr-map" data-draw="h-map" data-source="heritage"></div>
+    </div>
+  </section>
+
+  <section class="tr-section" id="compare">
+    <h2>Compare places side by side</h2>
+    <p class="tr-sub">International arrivals per year, 1995–2020. Add any country or region; click a chip to remove it.</p>
+    <div class="tr-controls">
+      <select class="dash-select" id="compare-add" data-draw="cmp-add" data-source="arrivals" aria-label="Add a country or region"></select>
+      <div class="tr-chips" data-draw="cmp-chips"></div>
+    </div>
+    <div class="tr-chart" data-draw="cmp-chart" data-source="arrivals"></div>
+  </section>
+
+  <section class="tr-section" id="table">
+    <h2>All countries, <span data-draw="per">—</span></h2>
+    <p class="tr-sub">Sorted by average yearly growth. Uses the region picked above. Greyed rows started below 1 million arrivals.</p>
+    <div class="tr-tablewrap">
+      <table data-source="growth" data-row-key="code,period">
+        <thead><tr><th class="n">#</th><th data-field="name">Country</th><th data-field="region">Region</th><th class="n" data-field="start">Start year arrivals</th><th class="n" data-field="end">2019 arrivals</th><th class="n" data-field="cagr">Yearly growth</th></tr></thead>
+        <tbody data-draw="country-table"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <details id="notes">
+    <summary>About this data</summary>
+    <p>World Bank, World Development Indicators: International tourism, number of arrivals (ST.INT.ARVL), last updated 8 October 2026. Arrivals count overnight visitors who travel to a country other than their usual residence. Original figures come from UN Tourism's Yearbook of Tourism Statistics.</p>
+    <p>Regions are the World Bank's seven geographic groups. Middle East &amp; North Africa has no regional total for 1995, so it is missing from the 1995–2019 view. Countries need a figure in both the start year and 2019 to be ranked. 2020 is shown in the comparison chart but left out of growth rates: the pandemic cut arrivals sharply and only 132 places reported that year.</p>
+    <p>World Heritage sites come from the UNESCO World Heritage List export (whc001), 1,273 properties inscribed from 1978 to 2026, with map positions from its coordinates. A site shared by several countries counts once for each. Comparisons with 2019 arrivals use only sites inscribed by 2019. South Sudan, North Korea, the Holy See and Afghanistan have sites but no arrivals figure, so they are not in the comparisons. Correlation shows that two things move together. It does not show that sites cause tourism: large, well-connected countries tend to have both.</p>
+  </details>
+</div>
+
+<script>
+// Fixed period definitions and shared page state.
+window.TR = {
+  periods: { '2009-2019': [2009, 2019], '1995-2019': [1995, 2019] },
+  period: '2009-2019',
+  region: '',
+  picks: ['ESP', 'USA', 'CHN', 'THA', 'VNM'],
+  short: { EAS: 'East Asia & Pacific', ECS: 'Europe & Central Asia', LCN: 'Latin America & Carib.', MEA: 'Middle East & N. Africa', NAC: 'North America', SAS: 'South Asia', SSF: 'Sub-Saharan Africa', WLD: 'World' },
+  fmtN: d3.format(','),
+  fmtC: (v) => (v > 0 ? '+' : '') + d3.format('.1f')(v) + '%',
+  fmtS: (v) => d3.format('.3~s')(v).replace('G', 'B'),
+  draws: ['per', 'per-start', 'lr-name', 'lr-cagr', 'lr-start', 'lr-end', 'lc-name', 'lc-cagr', 'lc-start', 'lc-end', 'w-cagr', 'w-start', 'w-end', 'region-index', 'region-bars', 'reg-missing', 'country-bars', 'country-table'],
+};
+
+// A span carrying a source mark.
+TR.mark = (text, source, field, where) => {
+  const s = document.createElement('span');
+  s.textContent = text;
+  s.setAttribute('data-source', source);
+  s.setAttribute('data-field', field);
+  if (where) s.setAttribute('data-where', where);
+  return s;
+};
+TR.where = (o) => Object.entries(o).map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');
+
+// True when every source is ready; otherwise puts a placeholder in el.
+TR.ready = (el, ids, box) => {
+  const st = ids.map((id) => dash.data(id).status);
+  if (st.every((s) => s === 'ok')) { el.classList.remove('dash-skeleton'); return true; }
+  if (st.includes('error') || st.includes('missing')) { el.classList.remove('dash-skeleton'); el.replaceChildren(document.createTextNode(box ? 'Failed to load' : '—')); }
+  else if (st.includes('loading')) { el.replaceChildren(box ? '' : '—'); el.classList.add('dash-skeleton'); }
+  else el.replaceChildren(document.createTextNode('—'));
+  return false;
+};
+
+TR.tip = (el) => { const t = document.createElement('div'); t.className = 'tr-tip'; t.hidden = true; el.appendChild(t); return t; };
+TR.tipFill = (tip, title, rows) => {
+  const h = document.createElement('div'); h.className = 't'; h.textContent = title;
+  tip.replaceChildren(h, ...rows.map((r) => {
+    const d = document.createElement('div'); d.className = 'r';
+    const sw = document.createElement('span'); sw.className = 'tr-sw'; sw.style.background = r.color || 'transparent';
+    const a = document.createElement('span'); a.textContent = r.label;
+    const b = document.createElement('span'); b.textContent = r.value;
+    d.append(sw, a, b); return d;
+  }));
+};
+TR.tipPlace = (el, tip, px, py) => {
+  tip.hidden = false;
+  const w = tip.offsetWidth, W = el.clientWidth;
+  tip.style.left = Math.max(0, Math.min(W - w, px + 14 + w > W ? px - w - 14 : px + 14)) + 'px';
+  tip.style.top = Math.max(0, py) + 'px';
+};
+
+// Multi-line chart. series: [{key, label, color, width, dash, hi, points:[{x,y,v}]}]
+TR.lines = (el, series, o) => {
+  el.replaceChildren();
+  const W = Math.max(260, el.clientWidth), H = o.height || 300;
+  const narrow = W < 560;
+  const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`)
+    .attr('role', 'img').attr('aria-label', o.aria).style('display', 'block');
+  const all = series.flatMap((s) => s.points);
+  if (!all.length) { el.replaceChildren(document.createTextNode('No data for this selection.')); return; }
+  const xd = d3.extent(all, (p) => p.x);
+  const y = d3.scaleLinear().domain([Math.min(0, d3.min(all, (p) => p.y)), d3.max(all, (p) => p.y)]).nice();
+  const ticks = y.ticks(5);
+  const g0 = svg.append('g');
+  let lw = 0; ticks.forEach((t) => { lw = Math.max(lw, g0.append('text').text(o.yFmt(t)).node().getComputedTextLength()); });
+  let ew = 0; if (!narrow) series.forEach((s) => { ew = Math.max(ew, g0.append('text').attr('class', 'hi').text(s.end).node().getComputedTextLength()); });
+  g0.remove();
+  const m = { t: 10, r: narrow ? 14 : ew + 14, b: 24, l: lw + 10 };
+  const x = d3.scaleLinear().domain(xd).range([m.l, W - m.r]);
+  y.range([H - m.b, m.t]);
+  svg.append('g').selectAll('line').data(ticks).join('line')
+    .attr('x1', m.l).attr('x2', W - m.r).attr('y1', (t) => y(t)).attr('y2', (t) => y(t)).style('stroke', 'var(--cds-chart-grid)');
+  svg.append('g').selectAll('text').data(ticks).join('text')
+    .attr('x', m.l - 6).attr('y', (t) => y(t)).attr('dy', '0.32em').attr('text-anchor', 'end').text(o.yFmt);
+  const xt = d3.ticks(xd[0], xd[1], narrow ? 4 : 7).filter(Number.isInteger);
+  svg.append('g').selectAll('text').data(xt).join('text')
+    .attr('x', (t) => x(t)).attr('y', H - 6).attr('text-anchor', 'middle').text((t) => t);
+  if (o.ref != null) svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(o.ref)).attr('y2', y(o.ref))
+    .style('stroke', 'var(--cds-chart-reference)').style('stroke-dasharray', '3 3');
+  const line = d3.line().defined((p) => p.y != null).x((p) => x(p.x)).y((p) => y(p.y));
+  const order = series.slice().sort((a, b) => (a.hi ? 1 : 0) - (b.hi ? 1 : 0));
+  svg.append('g').selectAll('path').data(order).join('path').attr('d', (s) => line(s.points))
+    .style('fill', 'none').style('stroke', (s) => s.color).style('stroke-width', (s) => s.width || 1.75)
+    .style('stroke-dasharray', (s) => s.dash || null).style('stroke-linejoin', 'round');
+  svg.append('g').selectAll('circle').data(order.filter((s) => s.points.length)).join('circle')
+    .attr('cx', (s) => x(s.points[s.points.length - 1].x)).attr('cy', (s) => y(s.points[s.points.length - 1].y))
+    .attr('r', (s) => (s.hi ? 4 : 2.5)).style('fill', (s) => s.color);
+  if (!narrow) {
+    const labs = series.filter((s) => s.points.length).map((s) => ({ s, y: y(s.points[s.points.length - 1].y) })).sort((a, b) => a.y - b.y);
+    for (let i = 1; i < labs.length; i++) if (labs[i].y - labs[i - 1].y < 13) labs[i].y = labs[i - 1].y + 13;
+    const over = labs.length ? labs[labs.length - 1].y - (H - m.b) : 0;
+    if (over > 0) labs.forEach((l) => { l.y -= over; });
+    for (let i = labs.length - 2; i >= 0; i--) if (labs[i + 1].y - labs[i].y < 13) labs[i].y = labs[i + 1].y - 13;
+    svg.append('g').selectAll('text').data(labs).join('text').attr('class', (l) => (l.s.hi ? 'hi' : null))
+      .attr('x', W - m.r + 8).attr('y', (l) => l.y).attr('dy', '0.32em').text((l) => l.s.end);
+  } else {
+    const lg = document.createElement('div'); lg.className = 'tr-legend';
+    series.forEach((s) => { const sp = document.createElement('span'); const sw = document.createElement('span'); sw.className = 'tr-sw'; sw.style.background = s.color; sp.append(sw, document.createTextNode(s.label)); lg.appendChild(sp); });
+    el.appendChild(lg);
+  }
+  const vl = svg.append('line').attr('y1', m.t).attr('y2', H - m.b).style('stroke', 'var(--cds-chart-axis)').style('opacity', 0);
+  const tip = TR.tip(el);
+  svg.append('rect').attr('x', m.l).attr('y', m.t).attr('width', Math.max(0, W - m.r - m.l)).attr('height', H - m.t - m.b)
+    .style('fill', 'transparent').style('cursor', 'crosshair')
+    .on('pointermove', (ev) => {
+      const [mx] = d3.pointer(ev);
+      const yr = Math.max(xd[0], Math.min(xd[1], Math.round(x.invert(mx))));
+      vl.attr('x1', x(yr)).attr('x2', x(yr)).style('opacity', 1);
+      const rows = series.map((s) => ({ s, p: s.points.find((p) => p.x === yr) })).filter((r) => r.p)
+        .sort((a, b) => b.p.y - a.p.y).map((r) => ({ color: r.s.color, label: r.s.label, value: o.tipFmt(r.p) }));
+      TR.tipFill(tip, String(yr), rows.length ? rows : [{ label: 'No figure', value: '' }]);
+      const k = el.clientWidth / W;
+      TR.tipPlace(el, tip, x(yr) * k, 4);
+    })
+    .on('pointerleave', () => { tip.hidden = true; vl.style('opacity', 0); });
+};
+
+// Horizontal bars. rows: [{label, value, hi, where, tip:[{label,value}]}]
+TR.bars = (el, rows, o) => {
+  el.replaceChildren();
+  if (!rows.length) { el.replaceChildren(document.createTextNode('No places to rank for this selection.')); return; }
+  const W = Math.max(260, el.clientWidth), rh = 26, top = o.ref != null ? 20 : 4, H = top + rows.length * rh + 4;
+  const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`)
+    .attr('role', 'img').attr('aria-label', o.aria).style('display', 'block');
+  const vf = o.fmt || TR.fmtC;
+  const g0 = svg.append('g'); let lw = 0, vw = 0;
+  rows.forEach((r) => { lw = Math.max(lw, g0.append('text').attr('class', 'hi').text(r.label).node().getComputedTextLength()); vw = Math.max(vw, g0.append('text').attr('class', 'hi').text(vf(r.value)).node().getComputedTextLength()); });
+  g0.remove();
+  lw = Math.min(lw, W * 0.45);
+  const m = { l: lw + 10, r: vw + 10 };
+  const vals = rows.map((r) => r.value).concat(o.ref != null ? [o.ref] : []);
+  const x = d3.scaleLinear().domain([Math.min(0, d3.min(vals)), Math.max(0, d3.max(vals))]).nice().range([m.l, W - m.r]);
+  const tip = TR.tip(el);
+  const g = svg.append('g').selectAll('g').data(rows).join('g').attr('transform', (r, i) => `translate(0,${top + i * rh})`);
+  g.append('text').attr('class', (r) => (r.hi ? 'hi' : null)).attr('x', m.l - 8).attr('y', rh / 2).attr('dy', '0.32em')
+    .attr('text-anchor', 'end').text((r) => r.label).each(function () {
+      while (this.getComputedTextLength() > lw && this.textContent.length > 4) this.textContent = this.textContent.slice(0, -2) + '…';
+    });
+  g.append('rect').attr('x', (r) => x(Math.min(0, r.value))).attr('y', 4).attr('height', rh - 8)
+    .attr('width', (r) => Math.max(1, Math.abs(x(r.value) - x(0)))).attr('rx', 2)
+    .style('fill', (r) => (r.hi ? dash.colors[0] : r.value < 0 ? 'var(--cds-chart-status-critical)' : 'var(--cds-chart-muted)'));
+  g.append('text').attr('class', (r) => (r.hi ? 'hi' : null)).attr('x', (r) => x(Math.max(0, r.value)) + 6).attr('y', rh / 2).attr('dy', '0.32em')
+    .attr('data-source', o.source || 'growth').attr('data-field', o.field || 'cagr').attr('data-where', (r) => r.where).text((r) => vf(r.value));
+  if (o.ref != null) {
+    svg.append('line').attr('x1', x(o.ref)).attr('x2', x(o.ref)).attr('y1', top - 4).attr('y2', H).style('stroke', 'var(--cds-chart-reference)').style('stroke-dasharray', '3 3');
+    svg.append('text').attr('x', x(o.ref)).attr('y', 10).attr('text-anchor', x(o.ref) > W * 0.7 ? 'end' : 'middle').text(o.refLabel);
+  }
+  g.append('rect').attr('x', 0).attr('width', W).attr('height', rh).style('fill', 'transparent')
+    .on('pointermove', (ev, r) => {
+      TR.tipFill(tip, r.label, r.tip);
+      const [px, py] = d3.pointer(ev, el);
+      TR.tipPlace(el, tip, px, py + 12);
+    })
+    .on('pointerleave', () => { tip.hidden = true; });
+};
+
+// Accent dots on the leader cards.
+dash.onData(() => { document.querySelectorAll('.tr-accent').forEach((d) => { d.style.background = dash.colors[0]; }); });
+
+// Period buttons.
+document.querySelectorAll('[data-period]').forEach((b) => {
+  b.addEventListener('click', () => {
+    TR.period = b.getAttribute('data-period');
+    document.querySelectorAll('[data-period]').forEach((o) => o.setAttribute('aria-pressed', String(o === b)));
+    TR.draws.forEach((n) => dash.draw(n));
+  });
+});
+</script>
+
+<script>
+// Average yearly growth for every country and geographic region, per period.
+dash.calc('growth', {
+  title: 'Average yearly growth',
+  description: 'Compound annual growth in arrivals for each country and the seven World Bank regions plus World, for 2009–2019 and 1995–2019.',
+  inputs: ['arrivals'],
+  fn: (arrivals) => {
+    const periods = [['2009-2019', 2009, 2019], ['1995-2019', 1995, 2019]];
+    const groups = ['EAS', 'ECS', 'LCN', 'MEA', 'NAC', 'SAS', 'SSF', 'WLD'];
+    const out = [];
+    for (const r of arrivals) {
+      const isCountry = r.kind === 'country';
+      if (!isCountry && !groups.includes(r.code)) continue;
+      for (const [period, a, b] of periods) {
+        const start = Number(r[String(a)]), end = Number(r[String(b)]);
+        if (!(r[String(a)] && r[String(b)] && start > 0 && end > 0)) continue;
+        out.push({
+          code: r.code, name: r.name, period,
+          kind: isCountry ? 'country' : r.code === 'WLD' ? 'world' : 'region',
+          region: isCountry ? r.region : '',
+          start, end,
+          cagr: Math.round((Math.pow(end / start, 1 / (b - a)) - 1) * 1000) / 10,
+        });
+      }
+    }
+    return out;
+  },
+});
+
+// Fastest-growing region and country (at least 1 million arrivals at the start) per period.
+dash.calc('leaders', {
+  title: 'Fastest growers',
+  description: 'The region and the country (with at least 1 million arrivals in the start year) with the highest average yearly growth in each period.',
+  inputs: ['growth'],
+  fn: (growth) => {
+    const out = [];
+    for (const period of ['2009-2019', '1995-2019']) {
+      const rows = growth.filter((g) => g.period === period);
+      const best = (list) => list.reduce((a, b) => (b.cagr > a.cagr ? b : a), list[0]);
+      const reg = best(rows.filter((g) => g.kind === 'region'));
+      const cty = best(rows.filter((g) => g.kind === 'country' && g.start >= 1000000));
+      out.push({
+        period,
+        regionCode: reg.code, regionName: reg.name, regionCagr: reg.cagr, regionStart: reg.start, regionEnd: reg.end,
+        countryCode: cty.code, countryName: cty.name, countryCagr: cty.cagr, countryStart: cty.start, countryEnd: cty.end,
+      });
+    }
+    return out;
+  },
+});
+
+// Each region's arrivals indexed to its start-year value, per period.
+dash.calc('regionIndex', {
+  title: 'Regional arrivals index',
+  description: 'Arrivals for the seven World Bank regions and World each year, as a share of the start-year value (start year = 100).',
+  inputs: ['arrivals'],
+  fn: (arrivals) => {
+    const periods = [['2009-2019', 2009, 2019], ['1995-2019', 1995, 2019]];
+    const groups = ['EAS', 'ECS', 'LCN', 'MEA', 'NAC', 'SAS', 'SSF', 'WLD'];
+    const out = [];
+    for (const r of arrivals) {
+      if (!groups.includes(r.code)) continue;
+      for (const [period, a, b] of periods) {
+        const base = Number(r[String(a)]);
+        if (!r[String(a)] || !(base > 0)) continue;
+        for (let yr = a; yr <= b; yr++) {
+          const v = r[String(yr)];
+          if (!v) continue;
+          out.push({ code: r.code, name: r.name, period, year: yr, arrivals: Number(v), index: Math.round(Number(v) / base * 1000) / 10 });
+        }
+      }
+    }
+    return out;
+  },
+});
+</script>
+
+<script>
+const L = () => { const l = dash.data('leaders'); return l.status === 'ok' ? l.data.find((r) => r.period === TR.period) : null; };
+const leaderDraw = (field, fmt) => (el) => {
+  if (!TR.ready(el, ['leaders'])) return;
+  const r = L(); if (!r) { el.textContent = '—'; return; }
+  el.replaceChildren(TR.mark(fmt(r[field]), 'leaders', field, TR.where({ period: TR.period })));
+};
+dash.draw('per', (el) => { el.textContent = TR.period.replace('-', '–'); });
+dash.draw('per-start', (el) => { el.textContent = String(TR.periods[TR.period][0]); });
+dash.draw('lr-name', leaderDraw('regionName', String));
+dash.draw('lr-cagr', leaderDraw('regionCagr', TR.fmtC));
+dash.draw('lr-start', leaderDraw('regionStart', TR.fmtN));
+dash.draw('lr-end', leaderDraw('regionEnd', TR.fmtN));
+dash.draw('lc-name', leaderDraw('countryName', String));
+dash.draw('lc-cagr', leaderDraw('countryCagr', TR.fmtC));
+dash.draw('lc-start', leaderDraw('countryStart', TR.fmtN));
+dash.draw('lc-end', leaderDraw('countryEnd', TR.fmtN));
+
+const worldDraw = (field, fmt) => (el) => {
+  if (!TR.ready(el, ['growth'])) return;
+  const w = dash.data('growth').data.find((g) => g.code === 'WLD' && g.period === TR.period);
+  if (!w) { el.textContent = '—'; return; }
+  el.replaceChildren(TR.mark(fmt(w[field]), 'growth', field, TR.where({ code: 'WLD', period: TR.period })));
+};
+dash.draw('w-cagr', worldDraw('cagr', TR.fmtC));
+dash.draw('w-start', worldDraw('start', TR.fmtN));
+dash.draw('w-end', worldDraw('end', TR.fmtN));
+
+dash.draw('region-index', (el) => {
+  if (!TR.ready(el, ['regionIndex', 'leaders'], true)) return;
+  const lead = L();
+  const rows = dash.data('regionIndex').data.filter((r) => r.period === TR.period);
+  const codes = [...new Set(rows.map((r) => r.code))];
+  const series = codes.map((c) => {
+    const hi = lead && c === lead.regionCode, world = c === 'WLD';
+    const pts = rows.filter((r) => r.code === c).map((r) => ({ x: r.year, y: r.index, v: r.arrivals }));
+    const last = pts[pts.length - 1];
+    return {
+      key: c, label: TR.short[c] || c, hi,
+      color: hi ? dash.colors[0] : world ? 'var(--color-fg-muted)' : 'var(--cds-chart-muted)',
+      width: hi ? 3 : world ? 1.5 : 1.5, dash: world ? '5 3' : null,
+      end: (TR.short[c] || c) + '  ' + (last ? d3.format(',.0f')(last.y) : ''),
+      points: pts,
+    };
+  });
+  TR.lines(el, series, {
+    aria: 'Line chart of regional tourism arrivals indexed to the start year, with the fastest-growing region highlighted.',
+    yFmt: d3.format(',.0f'), ref: 100, height: 300,
+    tipFmt: (p) => d3.format(',.0f')(p.y) + ' · ' + TR.fmtS(p.v),
+  });
+});
+
+dash.draw('region-bars', (el) => {
+  if (!TR.ready(el, ['growth'], true)) return;
+  const g = dash.data('growth').data.filter((r) => r.period === TR.period);
+  const regs = g.filter((r) => r.kind === 'region').sort((a, b) => b.cagr - a.cagr);
+  const w = g.find((r) => r.code === 'WLD');
+  TR.bars(el, regs.map((r, i) => ({
+    label: TR.short[r.code] || r.name, value: r.cagr, hi: i === 0,
+    where: TR.where({ code: r.code, period: TR.period }),
+    tip: [{ label: 'Yearly growth', value: TR.fmtC(r.cagr) }, { label: 'Start', value: TR.fmtN(r.start) }, { label: '2019', value: TR.fmtN(r.end) }],
+  })), { aria: 'Bar chart of average yearly growth in arrivals by region.', ref: w ? w.cagr : null, refLabel: w ? 'World ' + TR.fmtC(w.cagr) : '' });
+});
+
+dash.draw('reg-missing', (el) => {
+  if (dash.data('growth').status !== 'ok') { el.textContent = ''; return; }
+  const have = new Set(dash.data('growth').data.filter((r) => r.period === TR.period && r.kind === 'region').map((r) => r.code));
+  const miss = ['EAS', 'ECS', 'LCN', 'MEA', 'NAC', 'SAS', 'SSF'].filter((c) => !have.has(c)).map((c) => TR.short[c]);
+  el.textContent = miss.length ? miss.join(', ') + ' has no regional total for ' + TR.periods[TR.period][0] + ', so it is left out of this period.' : 'Dashed line: world average.';
+});
+
+dash.draw('region-filter', (sel) => {
+  const a = dash.data('arrivals');
+  const regs = a.status === 'ok' ? [...new Set(a.data.filter((r) => r.kind === 'country').map((r) => r.region))].sort() : [];
+  sel.replaceChildren(new Option('All regions', ''), ...regs.map((r) => new Option(r, r)));
+  sel.value = TR.region;
+  sel.onchange = () => { TR.region = sel.value; dash.draw('country-bars'); dash.draw('country-table'); };
+});
+
+const countryRows = () => dash.data('growth').data
+  .filter((r) => r.period === TR.period && r.kind === 'country' && (!TR.region || r.region === TR.region))
+  .sort((a, b) => b.cagr - a.cagr);
+
+dash.draw('country-bars', (el) => {
+  if (!TR.ready(el, ['growth'], true)) return;
+  const rows = countryRows().filter((r) => r.start >= 1000000).slice(0, 15);
+  const lead = L();
+  TR.bars(el, rows.map((r) => ({
+    label: r.name, value: r.cagr, hi: lead && r.code === lead.countryCode,
+    where: TR.where({ code: r.code, period: TR.period }),
+    tip: [{ label: 'Yearly growth', value: TR.fmtC(r.cagr) }, { label: 'Start', value: TR.fmtN(r.start) }, { label: '2019', value: TR.fmtN(r.end) }, { label: 'Region', value: r.region }],
+  })), { aria: 'Bar chart of the 15 fastest-growing countries by average yearly growth in arrivals.' });
+});
+
+dash.draw('country-table', (tb) => {
+  if (dash.data('growth').status !== 'ok') { tb.replaceChildren(); return; }
+  const lead = L();
+  tb.replaceChildren(...countryRows().map((r, i) => {
+    const tr = document.createElement('tr');
+    tr.setAttribute('data-key', encodeURIComponent(r.code) + ',' + encodeURIComponent(r.period));
+    if (r.start < 1000000) tr.className = 'small';
+    if (lead && r.code === lead.countryCode) tr.classList.add('lead');
+    const cells = [[String(i + 1), 'n'], [r.name], [r.region], [TR.fmtN(r.start), 'n'], [TR.fmtN(r.end), 'n'], [TR.fmtC(r.cagr), 'n' + (r.cagr < 0 ? ' neg' : '')]];
+    cells.forEach(([t, c]) => { const td = document.createElement('td'); td.textContent = t; if (c) td.className = c; tr.appendChild(td); });
+    return tr;
+  }));
+});
+
+// Compare: add/remove places, line chart of raw arrivals.
+const cmpRedraw = () => { dash.draw('cmp-add'); dash.draw('cmp-chips'); dash.draw('cmp-chart'); };
+dash.draw('cmp-add', (sel) => {
+  const a = dash.data('arrivals');
+  const rows = a.status === 'ok' ? a.data : [];
+  const groups = ['EAS', 'ECS', 'LCN', 'MEA', 'NAC', 'SAS', 'SSF', 'WLD'];
+  const og1 = document.createElement('optgroup'); og1.label = 'Regions';
+  rows.filter((r) => groups.includes(r.code) && !TR.picks.includes(r.code)).forEach((r) => og1.appendChild(new Option(r.name, r.code)));
+  const og2 = document.createElement('optgroup'); og2.label = 'Countries';
+  rows.filter((r) => r.kind === 'country' && !TR.picks.includes(r.code)).sort((x, y) => x.name.localeCompare(y.name)).forEach((r) => og2.appendChild(new Option(r.name, r.code)));
+  sel.replaceChildren(new Option(TR.picks.length >= 8 ? 'Remove one to add more' : 'Add a country or region…', ''), og1, og2);
+  sel.disabled = TR.picks.length >= 8;
+  sel.value = '';
+  sel.onchange = () => { if (sel.value && TR.picks.length < 8) { TR.picks = TR.picks.concat(sel.value); cmpRedraw(); } };
+});
+dash.draw('cmp-chips', (el) => {
+  const a = dash.data('arrivals');
+  if (a.status !== 'ok') { el.replaceChildren(); return; }
+  const byCode = new Map(a.data.map((r) => [r.code, r]));
+  el.replaceChildren(...TR.picks.filter((c) => byCode.has(c)).map((c, i) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'tr-chip';
+    b.setAttribute('aria-label', 'Remove ' + byCode.get(c).name);
+    const sw = document.createElement('span'); sw.className = 'tr-sw'; sw.style.background = dash.colors[i % dash.colors.length];
+    const x = document.createElement('span'); x.className = 'tr-x'; x.textContent = '×';
+    b.append(sw, document.createTextNode(byCode.get(c).name), x);
+    b.onclick = () => { TR.picks = TR.picks.filter((p) => p !== c); cmpRedraw(); };
+    return b;
+  }));
+});
+dash.draw('cmp-chart', (el) => {
+  if (!TR.ready(el, ['arrivals'], true)) return;
+  const byCode = new Map(dash.data('arrivals').data.map((r) => [r.code, r]));
+  const picks = TR.picks.filter((c) => byCode.has(c));
+  if (!picks.length) { el.replaceChildren(document.createTextNode('Add a country or region to compare.')); return; }
+  const series = picks.map((c, i) => {
+    const r = byCode.get(c);
+    const pts = [];
+    for (let yr = 1995; yr <= 2020; yr++) if (r[String(yr)]) pts.push({ x: yr, y: Number(r[String(yr)]), v: Number(r[String(yr)]) });
+    const last = pts[pts.length - 1];
+    return { key: c, label: r.name, color: dash.colors[i % dash.colors.length], width: 2, hi: false, end: r.name + '  ' + (last ? TR.fmtS(last.y) : ''), points: pts };
+  });
+  TR.lines(el, series, {
+    aria: 'Line chart comparing international arrivals per year for the selected places.',
+    yFmt: TR.fmtS, height: 320, tipFmt: (p) => TR.fmtN(p.v),
+  });
+});
+</script>
+
+<script>
+// ---------- World Heritage: calculations ----------
+dash.calc('heritageJoin', {
+  title: 'Heritage sites and arrivals by country',
+  description: 'For each country: World Heritage sites (all, inscribed by 2019, added 2010–2019, by category, in danger) beside 2009 and 2019 arrivals, yearly growth 2009–2019 and 2019 arrivals per site.',
+  inputs: ['arrivals', 'heritage'],
+  fn: (arrivals, heritage) => {
+    const by = new Map();
+    for (const s of heritage) {
+      for (const code of String(s.codes || '').split(';').filter(Boolean)) {
+        const c = by.get(code) || { sites: 0, sites2019: 0, added: 0, cultural: 0, natural: 0, mixed: 0, danger: 0 };
+        c.sites += 1;
+        if (s.year <= 2019) c.sites2019 += 1;
+        if (s.year >= 2010 && s.year <= 2019) c.added += 1;
+        if (s.category === 'Cultural') c.cultural += 1;
+        if (s.category === 'Natural') c.natural += 1;
+        if (s.category === 'Mixed') c.mixed += 1;
+        if (s.danger) c.danger += 1;
+        by.set(code, c);
+      }
+    }
+    const out = [];
+    for (const r of arrivals) {
+      if (r.kind !== 'country') continue;
+      const a19 = r['2019'] ? Number(r['2019']) : null;
+      const a09 = r['2009'] ? Number(r['2009']) : null;
+      const h = by.get(r.code) || { sites: 0, sites2019: 0, added: 0, cultural: 0, natural: 0, mixed: 0, danger: 0 };
+      out.push({
+        code: r.code, name: r.name, region: r.region, ...h,
+        arrivals2009: a09, arrivals2019: a19,
+        cagr: a09 > 0 && a19 > 0 ? Math.round((Math.pow(a19 / a09, 1 / 10) - 1) * 1000) / 10 : null,
+        perSite: a19 > 0 && h.sites2019 > 0 ? Math.round(a19 / h.sites2019) : null,
+      });
+    }
+    return out;
+  },
+});
+
+dash.calc('heritageStats', {
+  title: 'Heritage and tourism correlations',
+  description: 'View A: correlation and best-fit line between log10(sites inscribed by 2019 + 1) and log10(2019 arrivals). View B: between sites added 2010–2019 and yearly growth 2009–2019, for countries with at least 1 million arrivals in 2009.',
+  inputs: ['heritageJoin'],
+  fn: (countries) => {
+    const fit = (pts) => {
+      const n = pts.length, mx = pts.reduce((s, p) => s + p[0], 0) / n, my = pts.reduce((s, p) => s + p[1], 0) / n;
+      let sxy = 0, sxx = 0, syy = 0;
+      for (const [x, y] of pts) { sxy += (x - mx) * (y - my); sxx += (x - mx) ** 2; syy += (y - my) ** 2; }
+      const slope = sxy / sxx;
+      return { n, r: Math.round(sxy / Math.sqrt(sxx * syy) * 100) / 100, slope, intercept: my - slope * mx };
+    };
+    const a = countries.filter((c) => c.arrivals2019 > 0).map((c) => [Math.log10(c.sites2019 + 1), Math.log10(c.arrivals2019)]);
+    const b = countries.filter((c) => c.arrivals2009 >= 1000000 && c.cagr != null).map((c) => [c.added, c.cagr]);
+    return [{ view: 'A', ...fit(a) }, { view: 'B', ...fit(b) }];
+  },
+});
+
+dash.calc('heritageBuckets', {
+  title: 'Median arrivals by number of sites',
+  description: 'Countries with a 2019 arrivals figure, grouped by World Heritage sites inscribed by 2019, with the median 2019 arrivals in each group.',
+  inputs: ['heritageJoin'],
+  fn: (countries) => {
+    const groups = [['0', 0, 0], ['1–2', 1, 2], ['3–5', 3, 5], ['6–10', 6, 10], ['11–20', 11, 20], ['21+', 21, Infinity]];
+    return groups.map(([bucket, lo, hi]) => {
+      const v = countries.filter((c) => c.arrivals2019 > 0 && c.sites2019 >= lo && c.sites2019 <= hi).map((c) => c.arrivals2019).sort((x, y) => x - y);
+      const m = v.length ? (v.length % 2 ? v[(v.length - 1) / 2] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2) : null;
+      return { bucket, countries: v.length, median: m };
+    });
+  },
+});
+
+dash.calc('heritageTotals', {
+  title: 'World Heritage List totals',
+  description: 'Count of all inscribed sites by category and how many are on the List of World Heritage in Danger.',
+  inputs: ['heritage'],
+  fn: (sites) => [{
+    sites: sites.length,
+    cultural: sites.filter((s) => s.category === 'Cultural').length,
+    natural: sites.filter((s) => s.category === 'Natural').length,
+    mixed: sites.filter((s) => s.category === 'Mixed').length,
+    danger: sites.filter((s) => s.danger).length,
+  }],
+});
+</script>
+
+<script>
+// ---------- World Heritage: drawings ----------
+TR.hview = 'A';
+TR.mapCountry = '';
+TR.mapFilter = '';
+TR.regionColor = (regions) => { const m = new Map(); regions.forEach((r, i) => m.set(r, dash.colors[i % dash.colors.length])); return m; };
+
+document.querySelectorAll('[data-hview]').forEach((b) => {
+  b.addEventListener('click', () => {
+    TR.hview = b.getAttribute('data-hview');
+    document.querySelectorAll('[data-hview]').forEach((o) => o.setAttribute('aria-pressed', String(o === b)));
+    document.querySelectorAll('[data-hview-text]').forEach((t) => { t.hidden = t.getAttribute('data-hview-text') !== TR.hview; });
+    dash.draw('h-scatter');
+  });
+});
+document.querySelectorAll('#map-filter').forEach((s) => s.addEventListener('change', () => { TR.mapFilter = s.value; dash.draw('h-map'); }));
+
+// One value from a calc, marked by a matching row (where) or the first row.
+const one = (id, field, fmt, where) => (el) => {
+  if (!TR.ready(el, [id])) return;
+  const rows = dash.data(id).data;
+  const r = where ? rows.find((x) => Object.entries(where).every(([k, v]) => String(x[k]) === v)) : rows[0];
+  if (!r || r[field] == null) { el.textContent = '—'; return; }
+  const s = TR.mark(fmt(r[field]), id, field, where ? TR.where(where) : null);
+  if (!where) s.setAttribute('data-row', '0');
+  el.replaceChildren(s);
+};
+dash.draw('ht-sites', one('heritageTotals', 'sites', TR.fmtN));
+dash.draw('ht-cultural', one('heritageTotals', 'cultural', TR.fmtN));
+dash.draw('ht-natural', one('heritageTotals', 'natural', TR.fmtN));
+dash.draw('ht-mixed', one('heritageTotals', 'mixed', TR.fmtN));
+dash.draw('ht-danger', one('heritageTotals', 'danger', TR.fmtN));
+dash.draw('hs-a-r', one('heritageStats', 'r', d3.format('.2f'), { view: 'A' }));
+dash.draw('hs-a-n', one('heritageStats', 'n', TR.fmtN, { view: 'A' }));
+dash.draw('hs-b-r', one('heritageStats', 'r', d3.format('.2f'), { view: 'B' }));
+dash.draw('hb-top', one('heritageBuckets', 'median', TR.fmtN, { bucket: '21+' }));
+dash.draw('hb-zero', one('heritageBuckets', 'median', TR.fmtN, { bucket: '0' }));
+dash.draw('hs-b-word', (el) => {
+  if (!TR.ready(el, ['heritageStats'])) return;
+  const b = dash.data('heritageStats').data.find((r) => r.view === 'B');
+  const a = Math.abs(b ? b.r : 0);
+  el.textContent = a < 0.2 ? 'almost no' : a < 0.4 ? 'only a weak' : a < 0.6 ? 'a moderate' : 'a strong';
+});
+
+const perSiteRows = () => dash.data('heritageJoin').data.filter((c) => c.sites2019 >= 5 && c.perSite != null);
+const gem = () => perSiteRows().sort((a, b) => a.perSite - b.perSite)[0];
+const gemDraw = (field, fmt) => (el) => {
+  if (!TR.ready(el, ['heritageJoin'])) return;
+  const r = gem();
+  el.replaceChildren(r ? TR.mark(fmt(r[field]), 'heritageJoin', field, TR.where({ code: r.code })) : '—');
+};
+dash.draw('hg-name', gemDraw('name', String));
+dash.draw('hg-per', gemDraw('perSite', TR.fmtN));
+dash.draw('hg-sites', gemDraw('sites2019', String));
+
+const perTable = (asc) => (tb) => {
+  if (dash.data('heritageJoin').status !== 'ok') { tb.replaceChildren(); return; }
+  const rows = perSiteRows().sort((a, b) => (asc ? a.perSite - b.perSite : b.perSite - a.perSite)).slice(0, 8);
+  tb.replaceChildren(...rows.map((r) => {
+    const tr = document.createElement('tr');
+    tr.setAttribute('data-key', encodeURIComponent(r.code));
+    [[r.name], [String(r.sites2019), 'n'], [TR.fmtN(r.perSite), 'n']].forEach(([t, c]) => { const td = document.createElement('td'); td.textContent = t; if (c) td.className = c; tr.appendChild(td); });
+    return tr;
+  }));
+};
+dash.draw('h-top-per', perTable(false));
+dash.draw('h-low-per', perTable(true));
+
+dash.draw('h-buckets', (el) => {
+  if (!TR.ready(el, ['heritageBuckets'], true)) return;
+  const rows = dash.data('heritageBuckets').data.filter((r) => r.median != null);
+  TR.bars(el, rows.map((r, i) => ({
+    label: r.bucket + ' sites', value: r.median, hi: i === rows.length - 1,
+    where: TR.where({ bucket: r.bucket }),
+    tip: [{ label: 'Median arrivals', value: TR.fmtN(r.median) }, { label: 'Countries', value: String(r.countries) }],
+  })), { aria: 'Bar chart of median 2019 arrivals for countries grouped by number of World Heritage sites.', source: 'heritageBuckets', field: 'median', fmt: TR.fmtS });
+});
+
+dash.draw('h-scatter', (el) => {
+  if (!TR.ready(el, ['heritageJoin', 'heritageStats'], true)) return;
+  el.replaceChildren();
+  const A = TR.hview === 'A';
+  const st = dash.data('heritageStats').data.find((r) => r.view === TR.hview);
+  const rows = dash.data('heritageJoin').data.filter((c) => (A ? c.arrivals2019 > 0 : c.arrivals2009 >= 1000000 && c.cagr != null));
+  const X = (c) => (A ? c.sites2019 : c.added), Y = (c) => (A ? c.arrivals2019 : c.cagr);
+  const regions = [...new Set(dash.data('heritageJoin').data.map((c) => c.region))].sort();
+  const col = TR.regionColor(regions);
+  const W = Math.max(260, el.clientWidth), narrow = W < 520, H = narrow ? 320 : 380;
+  const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('role', 'img')
+    .attr('aria-label', A ? 'Scatter plot of World Heritage sites against 2019 international arrivals by country.' : 'Scatter plot of sites added 2010–2019 against yearly arrivals growth 2009–2019 by country.')
+    .style('display', 'block');
+  const xmax = d3.max(rows, X) || 1;
+  const x = A ? d3.scaleSymlog().constant(1).domain([0, xmax]) : d3.scaleLinear().domain([0, xmax]).nice();
+  const y = A ? d3.scaleLog().domain(d3.extent(rows, Y)).nice() : d3.scaleLinear().domain(d3.extent(rows, Y)).nice();
+  const yt = A ? [1e3, 1e4, 1e5, 1e6, 1e7, 1e8].filter((t) => t >= y.domain()[0] && t <= y.domain()[1]) : y.ticks(6);
+  const yf = A ? TR.fmtS : (v) => v + '%';
+  const xt = A ? [0, 1, 2, 5, 10, 20, 50].filter((t) => t <= x.domain()[1]) : x.ticks(narrow ? 4 : 8).filter(Number.isInteger);
+  const g0 = svg.append('g'); let lw = 0; yt.forEach((t) => { lw = Math.max(lw, g0.append('text').text(yf(t)).node().getComputedTextLength()); }); g0.remove();
+  const m = { t: 12, r: 16, b: 40, l: lw + 12 };
+  x.range([m.l, W - m.r]); y.range([H - m.b, m.t]);
+  svg.append('g').selectAll('line').data(yt).join('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y).attr('y2', y).style('stroke', 'var(--cds-chart-grid)');
+  svg.append('g').selectAll('text').data(yt).join('text').attr('x', m.l - 6).attr('y', y).attr('dy', '0.32em').attr('text-anchor', 'end').text(yf);
+  svg.append('g').selectAll('text').data(xt).join('text').attr('x', x).attr('y', H - m.b + 16).attr('text-anchor', 'middle').text((t) => t);
+  svg.append('text').attr('x', (m.l + W - m.r) / 2).attr('y', H - 6).attr('text-anchor', 'middle')
+    .text(A ? 'World Heritage sites inscribed by 2019' : 'Sites added 2010–2019');
+  if (!A) svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(0)).attr('y2', y(0)).style('stroke', 'var(--cds-chart-axis)');
+  if (st) {
+    const xs = d3.range(0, 61).map((i) => (x.domain()[1] * i) / 60);
+    const fy = (v) => (A ? Math.pow(10, st.intercept + st.slope * Math.log10(v + 1)) : st.intercept + st.slope * v);
+    const pts = xs.map((v) => [x(v), y(fy(v))]).filter((p) => p[1] >= m.t && p[1] <= H - m.b);
+    svg.append('path').attr('d', d3.line()(pts)).style('fill', 'none').style('stroke', 'var(--cds-chart-reference)').style('stroke-width', 2).style('stroke-dasharray', '6 4');
+  }
+  const jit = (c) => { let h = 0; for (const ch of c.code) h = (h * 31 + ch.charCodeAt(0)) % 997; return (h / 997 - 0.5) * 8; };
+  const cx = (c) => x(X(c)) + (X(c) <= 3 ? jit(c) : 0);
+  const rr = narrow ? 3.5 : 4.5;
+  const dots = svg.append('g').selectAll('circle').data(rows).join('circle')
+    .attr('cx', cx).attr('cy', (c) => y(Y(c))).attr('r', rr)
+    .style('fill', (c) => col.get(c.region)).style('fill-opacity', 0.8).style('stroke', 'var(--color-bg)').style('stroke-width', 0.75);
+  const labelled = A
+    ? rows.slice().sort((a, b) => b.sites2019 - a.sites2019).slice(0, narrow ? 4 : 8)
+      .concat(rows.filter((c) => c.sites2019 >= 5 && c.perSite != null).sort((a, b) => a.perSite - b.perSite).slice(0, 2))
+    : rows.slice().sort((a, b) => b.added - a.added).slice(0, narrow ? 3 : 5).concat(rows.slice().sort((a, b) => b.cagr - a.cagr).slice(0, 3));
+  const placed = [];
+  [...new Set(labelled)].forEach((c) => {
+    const px = cx(c), py = y(Y(c));
+    const right = px < W * 0.75;
+    const t = svg.append('text').attr('x', right ? px + 7 : px - 7).attr('y', py).attr('dy', '0.32em').attr('text-anchor', right ? 'start' : 'end').attr('class', 'hi').text(c.name);
+    const b = t.node().getBBox();
+    if (placed.some((p) => !(b.x > p.x + p.width || b.x + b.width < p.x || b.y > p.y + p.height || b.y + b.height < p.y))) t.remove(); else placed.push(b);
+  });
+  const lg = document.createElement('div'); lg.className = 'tr-legend';
+  regions.forEach((r) => { const sp = document.createElement('span'); const sw = document.createElement('span'); sw.className = 'tr-sw'; sw.style.background = col.get(r); sp.append(sw, document.createTextNode(r)); lg.appendChild(sp); });
+  const fl = document.createElement('span'); fl.textContent = '- - best fit'; lg.appendChild(fl);
+  el.appendChild(lg);
+  const tip = TR.tip(el);
+  dots.style('cursor', 'pointer').on('pointerenter', function (ev, c) {
+    d3.select(this).attr('r', rr + 2.5);
+    TR.tipFill(tip, c.name, [
+      { color: col.get(c.region), label: 'Region', value: c.region },
+      { label: 'Sites by 2019', value: String(c.sites2019) },
+      { label: 'Added 2010–19', value: String(c.added) },
+      { label: '2019 arrivals', value: c.arrivals2019 ? TR.fmtN(c.arrivals2019) : 'n/a' },
+      { label: 'Growth 2009–19', value: c.cagr != null ? TR.fmtC(c.cagr) + '/yr' : 'n/a' },
+      { label: 'Per site', value: c.perSite ? TR.fmtN(c.perSite) : 'n/a' },
+    ]);
+    const k = el.clientWidth / W;
+    TR.tipPlace(el, tip, cx(c) * k, y(Y(c)) * k - 10);
+  }).on('pointerleave', function () { d3.select(this).attr('r', rr); tip.hidden = true; });
+});
+
+dash.draw('map-country', (sel) => {
+  const j = dash.data('heritageJoin');
+  const rows = j.status === 'ok' ? j.data.filter((c) => c.sites > 0).sort((a, b) => a.name.localeCompare(b.name)) : [];
+  sel.replaceChildren(new Option('None', ''), ...rows.map((c) => new Option(c.name + ' (' + c.sites + ')', c.code)));
+  sel.value = TR.mapCountry;
+  sel.onchange = () => { TR.mapCountry = sel.value; dash.draw('h-map'); dash.draw('map-country-stats'); };
+});
+
+dash.draw('map-country-stats', (el) => {
+  const j = dash.data('heritageJoin');
+  const c = j.status === 'ok' && TR.mapCountry ? j.data.find((r) => r.code === TR.mapCountry) : null;
+  if (!c) { el.textContent = 'Pick a country to highlight its sites and see how its tourism compares.'; return; }
+  const w = (f, t) => TR.mark(t, 'heritageJoin', f, TR.where({ code: c.code }));
+  const parts = [w('name', c.name), ': ', w('sites', String(c.sites)), ' sites (', w('danger', String(c.danger)), ' in danger)'];
+  if (c.arrivals2019) parts.push(' · ', w('arrivals2019', TR.fmtN(c.arrivals2019)), ' arrivals in 2019');
+  if (c.perSite) parts.push(' · ', w('perSite', TR.fmtN(c.perSite)), ' per site');
+  if (c.cagr != null) parts.push(' · ', w('cagr', TR.fmtC(c.cagr)), ' a year, 2009–2019');
+  el.replaceChildren(...parts);
+});
+
+dash.draw('h-map', (el) => {
+  if (!TR.ready(el, ['heritage'], true)) return;
+  el.replaceChildren();
+  const all = dash.data('heritage').data.filter((s) => s.lat != null && s.lon != null);
+  const sites = all.filter((s) => !TR.mapFilter || (TR.mapFilter === 'danger' ? s.danger : s.category === TR.mapFilter));
+  const W = Math.max(260, el.clientWidth), lat0 = 78, lat1 = -58, H = Math.round(W * (lat0 - lat1) / 360);
+  const px = (lon) => ((lon + 180) / 360) * W, py = (lat) => ((lat0 - lat) / (lat0 - lat1)) * H;
+  const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('role', 'img')
+    .attr('aria-label', 'Map of World Heritage site locations, colored by category.').style('display', 'block');
+  svg.append('rect').attr('width', W).attr('height', H).attr('rx', 6).style('fill', 'var(--color-panel)');
+  const gl = svg.append('g').style('stroke', 'var(--cds-chart-grid)').style('stroke-width', 0.5);
+  d3.range(-150, 181, 30).forEach((lon) => gl.append('line').attr('x1', px(lon)).attr('x2', px(lon)).attr('y1', 0).attr('y2', H));
+  d3.range(-30, 76, 30).forEach((lat) => gl.append('line').attr('y1', py(lat)).attr('y2', py(lat)).attr('x1', 0).attr('x2', W));
+  svg.append('line').attr('x1', 0).attr('x2', W).attr('y1', py(0)).attr('y2', py(0)).style('stroke', 'var(--cds-chart-axis)').style('stroke-width', 0.75);
+  const catColor = { Cultural: dash.colors[0], Natural: dash.colors[1], Mixed: dash.colors[2] };
+  const hasSel = !!TR.mapCountry;
+  const isSel = (s) => hasSel && String(s.codes).split(';').includes(TR.mapCountry);
+  const r0 = W < 520 ? 1.8 : 2.6;
+  const ordered = sites.slice().sort((a, b) => (isSel(a) ? 1 : 0) - (isSel(b) ? 1 : 0));
+  svg.append('g').selectAll('circle').data(ordered).join('circle')
+    .attr('cx', (s) => px(s.lon)).attr('cy', (s) => py(s.lat)).attr('r', (s) => (isSel(s) ? r0 + 2 : r0))
+    .style('fill', (s) => catColor[s.category] || 'var(--cds-chart-muted)')
+    .style('fill-opacity', (s) => (hasSel && !isSel(s) ? 0.15 : 0.85))
+    .style('stroke', (s) => (s.danger ? 'var(--color-bad)' : isSel(s) ? 'var(--color-fg)' : 'none'))
+    .style('stroke-width', (s) => (s.danger ? 1.2 : 1));
+  const lg = document.createElement('div'); lg.className = 'tr-legend';
+  [['Cultural', catColor.Cultural], ['Natural', catColor.Natural], ['Mixed', catColor.Mixed]].forEach(([n, c]) => { const sp = document.createElement('span'); const sw = document.createElement('span'); sw.className = 'tr-sw'; sw.style.background = c; sp.append(sw, document.createTextNode(n)); lg.appendChild(sp); });
+  const dn = document.createElement('span'); const ring = document.createElement('span'); ring.className = 'tr-ring'; dn.append(ring, document.createTextNode('In danger')); lg.appendChild(dn);
+  const cnt = document.createElement('span'); cnt.textContent = TR.fmtN(sites.length) + ' sites shown'; lg.appendChild(cnt);
+  el.appendChild(lg);
+  const tip = TR.tip(el);
+  if (!sites.length) return;
+  const dl = d3.Delaunay.from(sites, (s) => px(s.lon), (s) => py(s.lat));
+  const ring2 = svg.append('circle').attr('r', r0 + 4).style('fill', 'none').style('stroke', 'var(--color-fg)').style('stroke-width', 1.5).style('opacity', 0);
+  svg.append('rect').attr('width', W).attr('height', H).style('fill', 'transparent')
+    .on('pointermove', (ev) => {
+      const [mx, my] = d3.pointer(ev);
+      const s = sites[dl.find(mx, my)];
+      if (!s || Math.hypot(px(s.lon) - mx, py(s.lat) - my) > 14) { tip.hidden = true; ring2.style('opacity', 0); return; }
+      ring2.attr('cx', px(s.lon)).attr('cy', py(s.lat)).style('opacity', 1);
+      TR.tipFill(tip, s.name, [
+        { color: catColor[s.category], label: s.category + ', inscribed', value: String(s.year) },
+        { label: s.states || 'No state party listed', value: '' },
+      ].concat(s.danger ? [{ color: 'var(--color-bad)', label: 'On the In Danger list', value: '' }] : []));
+      const k = el.clientWidth / W;
+      TR.tipPlace(el, tip, px(s.lon) * k, py(s.lat) * k + 10);
+    })
+    .on('pointerleave', () => { tip.hidden = true; ring2.style('opacity', 0); });
+});
+</script>
+
+<p class="site-foot">Data: World Bank, World Development Indicators (ST.INT.ARVL), updated 8 October 2026 · UNESCO World Heritage List. Built with <a href="https://d3js.org">D3</a>.</p>
+</div>
+<script>dash.load({ arrivals: { url: 'data/tourism_arrivals.csv', format: 'csv' }, heritage: { url: 'data/heritage_sites.json', format: 'json' } });</script>
+</body>
+</html>
