@@ -43,6 +43,24 @@ body { font-family: var(--font-anthropic-sans); font-size: var(--cds-font-size-b
 .dash-skeleton::after { content: ""; position: absolute; inset: 20%; border-radius: 4px; background: var(--color-border-line); }
 .site-foot { margin-top: 40px; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
 .site-foot a { color: inherit; }
+.how-link { font: inherit; font-size: var(--cds-font-size-caption); color: var(--color-fg); background: none; border: 0; padding: 0; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--color-fg-muted); cursor: pointer; }
+.how-link:hover { text-decoration-color: var(--color-fg); }
+.how-link:focus-visible, .how-close:focus-visible { outline: 2px solid var(--color-fg); outline-offset: 2px; }
+.how { width: min(760px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 0; border: 1px solid var(--color-border-line); border-radius: 12px; background: var(--color-panel); color: var(--color-fg); box-shadow: var(--cds-shadow-popover); }
+.how::backdrop { background: rgba(10, 12, 16, .45); }
+.how-head { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; background: var(--color-panel); border-bottom: 1px solid var(--color-border-line); z-index: 1; }
+.how-head h2 { margin: 0; font-family: var(--font-anthropic-serif); font-weight: 400; font-size: 1.4rem; text-wrap: balance; }
+.how-close { font: inherit; font-size: 1.4rem; line-height: 1; color: var(--color-fg-muted); background: none; border: 0; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+.how-close:hover { color: var(--color-fg); background: var(--color-bg); }
+.how-body { padding: 18px 20px 24px; display: grid; gap: 18px; line-height: 1.55; }
+.how-body p { margin: 0; max-width: 68ch; }
+.how-body a { color: var(--c1); overflow-wrap: anywhere; }
+.how-body h3 { margin: 6px 0 0; font-size: var(--cds-font-size-caption); letter-spacing: .06em; text-transform: uppercase; color: var(--color-fg-muted); font-weight: var(--cds-font-weight-medium); }
+.how-body ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
+.turn { display: grid; gap: 8px; }
+.turn-label { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); font-variant-numeric: tabular-nums; }
+.prompt { margin: 0; padding: 12px 14px; border-radius: var(--cds-radius); background: var(--color-bg); border: 1px solid var(--color-border-line); font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.85rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.did { margin: 0; padding-left: 14px; border-left: 2px solid var(--color-border-line); color: var(--color-fg-muted); font-size: 0.92rem; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <script>
@@ -163,6 +181,7 @@ window.dash = (() => {
       </div>
     </div>
     <p class="tr-sub">Growth is the average yearly change (compound annual growth rate) in inbound overnight visitors. Both periods end in 2019, the last year before the pandemic.</p>
+    <p class="tr-sub"><button type="button" class="how-link" data-how-open>How this was built using Claude Code</button></p>
   </header>
 
   <div class="tr-cards" id="leaders">
@@ -1026,8 +1045,70 @@ dash.draw('h-map', (el) => {
 });
 </script>
 
-<p class="site-foot">Data: World Bank, World Development Indicators (ST.INT.ARVL), updated 8 October 2026 · UNESCO World Heritage List. Built with <a href="https://d3js.org">D3</a>.</p>
+<p class="site-foot">Data: World Bank, World Development Indicators (ST.INT.ARVL), updated 8 October 2026 · UNESCO World Heritage List. Built with <a href="https://d3js.org">D3</a>. <button type="button" class="how-link" data-how-open>How this was built using Claude Code</button></p>
 </div>
+
+<dialog class="how" id="how-built" aria-labelledby="how-title">
+  <div class="how-head">
+    <h2 id="how-title">How this was built using Claude Code</h2>
+    <button type="button" class="how-close" data-how-close aria-label="Close">×</button>
+  </div>
+  <div class="how-body">
+    <p>This dashboard was built in one Claude Code session, through five prompts. Below is each prompt exactly as typed, with a short note on what Claude did in response. Local file paths are shortened to file names.</p>
+
+    <h3>Get the data</h3>
+    <ol>
+      <li>International tourism, number of arrivals (World Bank): <a href="https://data.worldbank.org/indicator/ST.INT.ARVL" target="_blank" rel="noopener">data.worldbank.org/indicator/ST.INT.ARVL</a>. Use <em>Download → Excel</em>.</li>
+      <li>World Heritage List (UNESCO): <a href="https://data.unesco.org/explore/assets/whc001/export/?flg=en-us" target="_blank" rel="noopener">data.unesco.org/explore/assets/whc001/export</a>. Download the Excel file and, if you want the map layer, the Shapefile (zip).</li>
+    </ol>
+
+    <h3>Transcript</h3>
+
+    <div class="turn">
+      <div class="turn-label">Prompt 1</div>
+      <p class="prompt">@"API_ST.INT.ARVL_DS2_en_excel_v2_11289.xls"
+What is in this data?</p>
+      <p class="did">Claude opened the World Bank file: international tourist arrivals (overnight visitors) from 1995 to 2020 for 203 countries and 47 regional and income groups, with sparse data for 2020.</p>
+    </div>
+
+    <div class="turn">
+      <div class="turn-label">Prompt 2</div>
+      <p class="prompt">Create simple dashboard that lets users compare how different countries and regions compare in terms of tourism activity.  Highlight the fastest grouping place.</p>
+      <p class="did">Claude computed average yearly growth (CAGR) for 2009–2019 and 1995–2019 and built the dashboard: leader cards, regional index and growth charts, the top 15 countries, a side-by-side comparison and a full table. The fastest-growing region (South Asia) and country (Uzbekistan) are highlighted. A country needs at least 1 million starting arrivals to be ranked, so tiny bases don't dominate.</p>
+    </div>
+
+    <div class="turn">
+      <div class="turn-label">Prompt 3</div>
+      <p class="prompt">@"whc001.zip" @"whc001.xlsx"
+I just added 2 files: World Heritage sites Excel file and World Heritage sits map file.  Can you make the dashboard more informative and insightful by allowing users to discover the relationship between world heritage sites and tourism?</p>
+      <p class="did">Claude matched UNESCO's ISO country codes to World Bank codes and counted sites per country, using only sites inscribed by 2019 for the 2019 comparison. It then added the World Heritage section: correlation cards, a scatter plot with two views (sites vs. visitors, new sites vs. growth), median arrivals by site count, the most- and fewest-visitors-per-site tables, and a map of every site. Main findings: site count and arrivals correlate at r = 0.66 on a log scale, but sites added from 2010 to 2019 barely track growth (r = 0.12).</p>
+    </div>
+
+    <div class="turn">
+      <div class="turn-label">Prompt 4</div>
+      <p class="prompt">export this to my github and name public repo Tourism and World Heritage Site Nov 2026.  Turn on Pages.</p>
+      <p class="did">Claude rebuilt the dashboard as a standalone static site (HTML, D3 and the two data files), tested it locally, created this public repository and turned on GitHub Pages.</p>
+    </div>
+
+    <div class="turn">
+      <div class="turn-label">Prompt 5</div>
+      <p class="prompt">I want to let the user see the entire transcript of the prompts I used to build this artifact. Can you add a link "How this was build using Claude Code".  It pop ups a page with the transcript.  Include the links https://data.worldbank.org/indicator/ST.INT.ARVL and  https://data.unesco.org/explore/assets/whc001/export/?flg=en-us in the transcript instructions. so users can download the data file.</p>
+      <p class="did">Claude added this window and the links above for downloading the source data.</p>
+    </div>
+  </div>
+</dialog>
+<script>
+(() => {
+  const dlg = document.getElementById('how-built');
+  if (!dlg) return;
+  document.querySelectorAll('[data-how-open]').forEach((b) => b.addEventListener('click', () => {
+    if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
+  }));
+  dlg.querySelectorAll('[data-how-close]').forEach((b) => b.addEventListener('click', () => dlg.close()));
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
+  if (location.hash === '#how-built' && dlg.showModal) dlg.showModal();
+})();
+</script>
 <script>dash.load({ arrivals: { url: 'data/tourism_arrivals.csv', format: 'csv' }, heritage: { url: 'data/heritage_sites.json', format: 'json' } });</script>
 </body>
 </html>
