@@ -1054,7 +1054,7 @@ dash.draw('h-map', (el) => {
     <button type="button" class="how-close" data-how-close aria-label="Close">×</button>
   </div>
   <div class="how-body">
-    <p>This dashboard was built in one Claude Code session, through five prompts. Below is each prompt exactly as typed, with a short note on what Claude did in response. Local file paths are shortened to file names.</p>
+    <p>This dashboard was built in one Claude Code session, through six prompts. Below is each prompt exactly as typed, with a short note on what Claude did in response. Local file paths are shortened to file names.</p>
 
     <h3>Get the data</h3>
     <ol>
@@ -1087,13 +1087,19 @@ I just added 2 files: World Heritage sites Excel file and World Heritage sits ma
     <div class="turn">
       <div class="turn-label">Prompt 4</div>
       <p class="prompt">export this to my github and name public repo Tourism and World Heritage Site Nov 2026.  Turn on Pages.</p>
-      <p class="did">Claude rebuilt the dashboard as a standalone static site (HTML, D3 and the two data files), tested it locally, created this public repository and turned on GitHub Pages.</p>
+      <p class="did">Claude rebuilt the dashboard as a standalone static site (HTML, D3 and the two data files), tested it locally, created the public repository hqu/Tourism-and-World-Heritage-Site-Nov-2026 and turned on GitHub Pages.</p>
     </div>
 
     <div class="turn">
       <div class="turn-label">Prompt 5</div>
       <p class="prompt">I want to let the user see the entire transcript of the prompts I used to build this artifact. Can you add a link "How this was build using Claude Code".  It pop ups a page with the transcript.  Include the links https://data.worldbank.org/indicator/ST.INT.ARVL and  https://data.unesco.org/explore/assets/whc001/export/?flg=en-us in the transcript instructions. so users can download the data file.</p>
-      <p class="did">Claude added this window and the links above for downloading the source data.</p>
+      <p class="did">Claude added this window, with the links above for downloading the source data, to the GitHub Pages site. It then asked whether to add it to the claude.ai version of the dashboard too.</p>
+    </div>
+
+    <div class="turn">
+      <div class="turn-label">Prompt 6</div>
+      <p class="prompt">Yes, add it</p>
+      <p class="did">Claude added the same window to the claude.ai version of the dashboard.</p>
     </div>
   </div>
 </dialog>
